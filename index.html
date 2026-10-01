@@ -28,18 +28,18 @@
   <div id="app" style="display:none;">
     <!-- 未綁定畫面 -->
     <div id="bindView" class="card" style="display:none;">
-      <h2>首次身分綁定</h2>
-      <p style="font-size: 14px; color: #666;">請輸入您的真實姓名與 6 位數身分識別碼進行驗證。</p>
-      <label>教師姓名：</label>
-      <input type="text" id="bindName" placeholder="例：張大明">
-      <label>身分識別碼 (6碼)：</label>
-      <input type="text" id="bindIdCode" maxlength="6" placeholder="例：123456">
-      <button onclick="submitBinding()">確認綁定</button>
-      
-      <div id="contactInfo" style="margin-top: 15px; font-size: 13px; color: #777; display:none;">
-        查無身分？請聯絡管理員：<span id="adminName"></span> (<a id="adminPhone" href=""></a>)
-      </div>
-    </div>
+  <h2>首次身分綁定</h2>
+  <p style="font-size: 14px; color: #666;">請輸入您的真實姓名與 5 位數身分識別碼進行驗證。</p>
+  <label>教師姓名：</label>
+  <input type="text" id="bindName" placeholder="例：張大明">
+  <label>身分識別碼 (5碼)：</label>
+  <input type="text" id="bindIdCode" maxlength="5" placeholder="例：01234">
+  <button onclick="submitBinding()">確認綁定</button>
+  
+  <div id="contactInfo" style="margin-top: 15px; font-size: 13px; color: #777; display:none;">
+    查無身分？請聯絡管理員：<span id="adminName"></span> (<a id="adminPhone" href=""></a>)
+  </div>
+</div>
 
     <!-- 簽到主頁面 -->
     <div id="checkInView" class="card" style="display:none;">
@@ -133,19 +133,19 @@
     }
 
     function submitBinding() {
-      const name = document.getElementById('bindName').value;
-      const idCode = document.getElementById('bindIdCode').value;
+  const name = document.getElementById('bindName').value;
+  const idCode = document.getElementById('bindIdCode').value;
 
-      if (!name || !idCode) return alert('請填寫完整資訊！');
-      if (idCode.length !== 6) return alert('識別碼必須為 6 位數字！');
+  if (!name || !idCode) return alert('請填寫完整資訊！');
+  if (idCode.length !== 5) return alert('識別碼必須為 5 位數字！'); // 檢查改為 5 碼
 
-      callGasApi("bindUser", { myLineUserId: myLineUserId, name: name, idCode: idCode })
-        .then(res => {
-          alert(res.message);
-          if (res.success) location.reload();
-        })
-        .catch(err => alert("綁定請求失敗：" + err));
-    }
+  callGasApi("bindUser", { myLineUserId: myLineUserId, name: name, idCode: idCode })
+    .then(res => {
+      alert(res.message);
+      if (res.success) location.reload();
+    })
+    .catch(err => alert("綁定請求失敗：" + err));
+}
 
     function doCheckIn() {
       if (!navigator.geolocation) return alert('您的裝置不支援 GPS 定位！');
