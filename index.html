@@ -55,17 +55,20 @@
     </div>
 
     <!-- 管理員後台視窗 -->
-    <div id="adminView" class="card" style="display:none;">
-      <h2 style="color:#007bff;">管理員簽到看板</h2>
-      <div id="adminStats" style="font-size:15px; font-weight:bold; margin-bottom:15px;"></div>
-      
-      <h3>未簽到人員名單</h3>
-      <div id="uncheckedList"></div>
+<div id="adminView" class="card" style="display:none;">
+  <h2 style="color:#007bff;">管理員簽到看板</h2>
+  
+  <label style="font-weight:bold; font-size:14px; color:#555;">選擇查看會議：</label>
+  <select id="adminMeetingSelect" onchange="switchAdminMeeting()" style="width:100%; padding:10px; margin: 8px 0 15px; border-radius:6px; border:1px solid #ddd; font-size:15px; background:white;"></select>
 
-      <button class="remind-btn" onclick="sendRemindersToAll()">一鍵 LINE 發送提醒</button>
-      <button style="background:#666; margin-top:10px;" onclick="closeAdminView()">返回簽到頁面</button>
-    </div>
-  </div>
+  <div id="adminStats" style="font-size:15px; font-weight:bold; margin-bottom:15px;"></div>
+  
+  <h3>未簽到人員名單</h3>
+  <div id="uncheckedList"></div>
+
+  <button class="remind-btn" onclick="sendRemindersToAll()">一鍵 LINE 發送提醒</button>
+  <button style="background:#666; margin-top:10px;" onclick="closeAdminView()">返回簽到頁面</button>
+</div>
 
   <script>
     // ⚠️ 請填入您的 LIFF ID 與 GAS Web App 發布網址
@@ -175,30 +178,59 @@
       }, { enableHighAccuracy: true });
     }
 
-    function showAdminView() {
-      document.getElementById('checkInView').style.display = 'none';
-      document.getElementById('adminView').style.display = 'block';
+    function showAdminView(targetMeetingName) {
+  document.getElementById('checkInView').style.display = 'none';
+  document.getElementById('adminView').style.display = 'block';
 
-      callGasApi("getAdminDashboardData")
-        .then(res => {
-          if (!res.success) return alert(res.message);
+  callGasApi("getAdminDashboardData", { targetMeetingName: targetMeetingName || "" })
+    .then(res => {
+      if (!res.success) return alert(res.message);
 
-          const d = res.data;
-          document.getElementById('adminStats').innerText = `【${d.meetingName}】 應到：${d.totalCount}人 | 已到：${d.checkedCount}人 | 未到：${d.uncheckedList.length}人`;
+      const d = res.data;
+      
+      // 動態產生會議下拉選單選項
+      const selectEl = document.getElementById('adminMeetingSelect');
+      selectEl.innerHTML = '';
+      d.allMeetings.forEach(mName => {
+        const opt = document.createElement('option');
+        opt.value = mName;
+        opt.innerText = mName;
+        if (mName === d.meetingName) opt.selected = true;
+        selectEl.appendChild(opt);
+      });
 
-          let html = '';
-          d.uncheckedList.forEach(u => {
-            const boundBadge = u.isBound ? '<span class="badge badge-success">已綁定</span>' : '<span class="badge badge-danger">未綁定</span>';
-            html += `
-              <div class="user-row">
-                <div><b>${u.name}</b> ${boundBadge}</div>
-                <div><button style="padding:6px 10px; font-size:12px; width:auto;" onclick="manualCheckIn('${u.name}')">代簽</button></div>
-              </div>`;
-          });
-          document.getElementById('uncheckedList').innerHTML = html || '所有人皆已完成簽到！';
-        })
-        .catch(err => alert("取得看板資料失敗：" + err));
-    }
+      document.getElementById('adminStats').innerText = `【${d.meetingName}】 應到：${d.totalCount}人 | 已到：${d.checkedCount}人 | 未到：${d.uncheckedList.length}人`;
+
+      let html = '';
+      d.uncheckedList.forEach(u => {
+        const boundBadge = u.isBound ? '<span class="badge badge-success">已綁定</span>' : '<span class="badge badge-danger">未綁定</span>';
+        html += `
+          <div class="user-row">
+            <div><b>${u.name}</b> ${boundBadge}</div>
+            <div><button style="padding:6px 10px; font-size:12px; width:auto;" onclick="manualCheckIn('${u.name}')">代簽</button></div>
+          </div>`;
+      });
+      document.getElementById('uncheckedList').innerHTML = html || '所有人皆已完成簽到！';
+    })
+    .catch(err => alert("取得看板資料失敗：" + err));
+}
+
+function switchAdminMeeting() {
+  const selectedMeeting = document.getElementById('adminMeetingSelect').value;
+  showAdminView(selectedMeeting);
+}
+
+function manualCheckIn(name) {
+  const currentMeeting = document.getElementById('adminMeetingSelect').value;
+  if (confirm(`確定要為 ${name} 老師手動代簽【${currentMeeting}】嗎？`)) {
+    callGasApi("adminManualCheckIn", { name: name, myLineUserId: myLineUserId, targetMeetingName: currentMeeting })
+      .then(res => {
+        alert(res.message);
+        showAdminView(currentMeeting); // 刷新該會議看板
+      })
+      .catch(err => alert("代簽操作失敗：" + err));
+  }
+}
 
     function closeAdminView() {
       document.getElementById('adminView').style.display = 'none';
