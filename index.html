@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GPS 簽到系統</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; text-align: center; }
+    .card { background: #f9f9f9; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 20px; }
+    button { background: #06C755; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 15px; }
+    button:disabled { background: #ccc; }
+    #status { margin-top: 15px; color: #666; font-size: 14px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+
+  <h2>📍 GPS 簽到系統</h2>
+  
+  <div class="card">
+    <div id="user-info">載入使用者資料中...</div>
+    <button id="checkin-btn" onclick="handleCheckIn()" disabled>取得 GPS 並簽到</button>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    // 1. 填入你的 LIFF ID 與 GAS 發布網址
+    const LIFF_ID = "2011810210-ESVfHIBL"; 
+    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwV6-_xUaU5_3TAjiSBqDm2QZrN68-I8pOACwSHpBjWuDRQho1JfbQUP9030orQ2zHj/exec"; // 步驟 2 取得後填入
+
+    let currentUser = null;
+
+    window.onload = function() {
+      liff.init({ liffId: LIFF_ID })
+        .then(() => {
+          if (!liff.isLoggedIn()) {
+            liff.login();
+          } else {
+            liff.getProfile().then(profile => {
+              currentUser = profile;
+              document.getElementById('user-info').innerHTML = `<strong>使用者：</strong> ${profile.displayName}`;
+              document.getElementById('checkin-btn').disabled = false;
+            });
+          }
+        })
+        .catch(err => {
+          document.getElementById('status').innerText = "❌ LIFF 初始化失敗：" + err.message;
+        });
+    };
+
+    function handleCheckIn() {
+      const statusDiv = document.getElementById('status');
+      const btn = document.getElementById('checkin-btn');
+      btn.disabled = true;
+      statusDiv.innerText = "⏳ 正在定位中...";
+
+      if (!navigator.geolocation) {
+        statusDiv.innerText = "❌ 您的裝置或瀏覽器不支援 GPS 定位功能";
+        btn.disabled = false;
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        position => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          statusDiv.innerText = `⏳ 已取得座標 (${lat.toFixed(4)}, ${lng.toFixed(4)})，正在寫入資料庫...`;
+
+          // 發送資料給 GAS 後端
+          fetch(GAS_WEB_APP_URL, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain" }, // 避免 CORS preflight 問題
+            body: JSON.stringify({
+              userId: currentUser.userId,
+              displayName: currentUser.displayName,
+              latitude: lat,
+              longitude: lng
+            })
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (data.status === "success") {
+              statusDiv.innerText = "🎉 簽到成功！";
+            } else {
+              statusDiv.innerText = "❌ 簽到失敗：" + data.message;
+              btn.disabled = false;
+            }
+          })
+          .catch(err => {
+            statusDiv.innerText = "❌ 連線失敗：" + err.message;
+            btn.disabled = false;
+          });
+        },
+        error => {
+          statusDiv.innerText = "❌ 無法取得 GPS 位置，請確認已開啟定位權限。";
+          btn.disabled = false;
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    }
+  </script>
+</body>
+</html>
