@@ -11,14 +11,14 @@
     .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); max-width: 480px; margin: 0 auto; }
     h2 { margin-top: 0; color: #1DB446; text-align: center; }
     label { font-weight: bold; margin-top: 10px; display: block; }
-    input, select { width: 100%; padding: 12px; margin: 8px 0 15px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; font-size: 16px; }
+    input[type="text"], select { width: 100%; padding: 12px; margin: 8px 0 15px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; font-size: 16px; }
     button { width: 100%; background: #1DB446; color: white; border: none; padding: 14px; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
     button:disabled { background: #ccc; cursor: not-allowed; }
     .scan-btn { background: #007bff; font-size: 18px; margin-top: 15px; }
     .admin-btn { background: #6c757d; margin-top: 10px; }
     .remind-btn { background: #ff9800; margin-top: 15px; }
     .user-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; }
-    .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; color: white; }
+    .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; color: white; margin-left: 5px; }
     .badge-success { background: #28a745; }
     .badge-danger { background: #dc3545; }
     #loading { text-align: center; font-size: 18px; color: #666; margin-top: 50px; }
@@ -60,9 +60,15 @@
   <label>選擇查看會議：</label>
   <select id="adminMeetingSelect" onchange="switchAdminMeeting()"></select>
   <div id="adminStats" style="font-size:15px; font-weight:bold; margin-bottom:15px;"></div>
-  <h3>未簽到人員名單</h3>
+  
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+    <h3 style="margin:0;">未簽到人員名單</h3>
+    <button type="button" onclick="toggleRemindSelectAll()" style="background:#e2e8f0; color:#333; border:none; padding:5px 10px; font-size:12px; border-radius:4px; cursor:pointer; width:auto;">全選/全不選提醒</button>
+  </div>
+
   <div id="uncheckedList"></div>
-  <button class="remind-btn" onclick="sendRemindersToAll()">一鍵 LINE 發送提醒</button>
+
+  <button class="remind-btn" onclick="sendRemindersToSelected()">一鍵 LINE 發送提醒 (僅勾選者)</button>
   <button style="background:#666; margin-top:10px;" onclick="closeAdminView()">返回簽到頁面</button>
 </div>
 
@@ -73,6 +79,7 @@
 
   let myLineUserId = "";
   let currentMeetingName = "";
+  let isRemindAllSelected = true;
 
   window.onload = function() {
     liff.init({ liffId: MY_LIFF_ID })
@@ -92,12 +99,11 @@
       });
   };
 
-  // 跨域呼叫 GAS API
   function callGasApi(action, extraData = {}) {
     const payload = Object.assign({ action: action }, extraData);
     return fetch(GAS_WEB_APP_URL, {
       method: "POST",
-      headers: { "Content-Type": "text/plain" }, // 避開 CORS 預檢請求
+      headers: { "Content-Type": "text/plain" },
       body: JSON.stringify(payload)
     }).then(res => res.json());
   }
@@ -147,7 +153,6 @@
       });
   }
 
-  // 📷 喚起 LINE 鏡頭進行現場條碼掃描
   function triggerQrScanner() {
     if (!liff.scanCodeV2) {
       return alert("您的 LINE 版本不支援 scanCodeV2，請更新 LINE App！");
@@ -192,10 +197,23 @@
         let html = '';
         d.uncheckedList.forEach(u => {
           const boundBadge = u.isBound ? '<span class="badge badge-success">已綁定</span>' : '<span class="badge badge-danger">未綁定</span>';
+          
+          // 勾選框：已綁定人員預設勾選；未綁定者停用並提示說明
+          const checkboxHtml = u.isBound && u.lineUserId
+            ? `<input type="checkbox" class="remind-checkbox" value="${u.lineUserId}" checked style="width:20px; height:20px; margin:0; cursor:pointer;" title="勾選發送提醒">`
+            : `<input type="checkbox" disabled style="width:20px; height:20px; margin:0; opacity:0.3;" title="未綁定 LINE 帳號，無法發送">`;
+
           html += `
             <div class="user-row">
-              <div><b>${u.name}</b> ${boundBadge}</div>
-              <div><button style="padding:6px 10px; font-size:12px; width:auto;" onclick="manualCheckIn('${u.name}')">代簽</button></div>
+              <div>
+                <b>${u.name}</b> ${boundBadge}
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <button style="padding:6px 10px; font-size:12px; width:auto;" onclick="manualCheckIn('${u.name}')">代簽</button>
+                <label style="margin:0; display:flex; align-items:center;">
+                  ${checkboxHtml}
+                </label>
+              </div>
             </div>`;
         });
         document.getElementById('uncheckedList').innerHTML = html || '所有人皆已完成簽到！';
@@ -217,14 +235,30 @@
     }
   }
 
-  function sendRemindersToAll() {
+  // 提醒勾選全選 / 全不選
+  function toggleRemindSelectAll() {
+    isRemindAllSelected = !isRemindAllSelected;
+    const checkboxes = document.querySelectorAll('.remind-checkbox:not(:disabled)');
+    checkboxes.forEach(cb => {
+      cb.checked = isRemindAllSelected;
+    });
+  }
+
+  // 僅發送提醒給有勾選的同仁
+  function sendRemindersToSelected() {
     const meeting = document.getElementById('adminMeetingSelect').value;
-    callGasApi("getAdminDashboardData", { targetMeetingName: meeting })
-      .then(res => {
-        const ids = res.data.uncheckedList.map(u => u.lineUserId);
-        callGasApi("sendReminders", { targetIds: ids, meetingName: meeting })
-          .then(r => alert(r.message));
-      });
+    const checkedBoxes = document.querySelectorAll('.remind-checkbox:checked');
+    const selectedIds = Array.from(checkedBoxes).map(cb => cb.value).filter(id => id && id.trim() !== "");
+
+    if (selectedIds.length === 0) {
+      alert("請先勾選要發送提醒的同仁（僅限已綁定 LINE 帳號者）！");
+      return;
+    }
+
+    if (confirm(`確定要向勾選的 ${selectedIds.length} 位同仁發送【${meeting}】的 LINE 簽到提醒嗎？`)) {
+      callGasApi("sendReminders", { targetIds: selectedIds, meetingName: meeting })
+        .then(r => alert(r.message));
+    }
   }
 
   function closeAdminView() {
