@@ -45,9 +45,10 @@
 <!-- 已綁定 / 簽到畫面 -->
 <div id="checkInView" class="card" style="display:none;">
   <h2 id="welcomeText">您好！</h2>
-  <div id="meetingBox" style="background: #eef9f1; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-    <h3 id="meetingName" style="margin:0 0 10px; color:#1DB446;">載入會議中...</h3>
-    <p style="margin:0; font-size:14px; color:#555;">📍 請點擊下方按鈕，掃描會議現場條碼完成簽到。</p>
+  
+  <!-- 多會議動態列表容器 -->
+  <div id="meetingBox" style="margin-bottom: 15px;">
+    <div style="text-align:center; color:#777; padding:15px;">載入會議中...</div>
   </div>
   
   <button id="scanBtn" class="scan-btn" onclick="triggerQrScanner()">📷 掃描現場 QR Code 簽到</button>
@@ -73,9 +74,9 @@
 </div>
 
 <script>
-  // ⚙️ 系統設定（請務必替換這兩項）
-  const MY_LIFF_ID = "2011810210-ESVfHIBL"; // 例："2001234567-AbCdEfGh"
-  const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwHOCTSRe78iYaveaiZgsatnALzW6whRbDWENR6Mo1PSodNqTj8xC5xJ9ogMERZPgo3/exec"; // 例："https://script.google.com/macros/s/.../exec"
+  // ⚙️ 系統設定
+  const MY_LIFF_ID = "2011810210-ESVfHIBL";
+  const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwHOCTSRe78iYaveaiZgsatnALzW6whRbDWENR6Mo1PSodNqTj8xC5xJ9ogMERZPgo3/exec";
 
   let myLineUserId = "";
   let currentMeetingName = "";
@@ -115,6 +116,7 @@
 
         if (!res.isBound) {
           document.getElementById('bindView').style.display = 'block';
+          document.getElementById('checkInView').style.display = 'none';
           if (res.adminContact) {
             document.getElementById('contactInfo').style.display = 'block';
             document.getElementById('adminName').innerText = res.adminContact;
@@ -122,6 +124,7 @@
             document.getElementById('adminPhone').href = "tel:" + res.adminPhone;
           }
         } else {
+          document.getElementById('bindView').style.display = 'none';
           document.getElementById('checkInView').style.display = 'block';
           document.getElementById('welcomeText').innerText = `👋 ${res.userName} 老師`;
 
@@ -129,12 +132,39 @@
             document.getElementById('adminBtn').style.display = 'block';
           }
 
-          if (res.activeMeeting) {
-            currentMeetingName = res.activeMeeting.name;
-            document.getElementById('meetingName').innerText = `【${res.activeMeeting.name}】開放簽到中`;
+          const meetingBox = document.getElementById('meetingBox');
+          const scanBtn = document.getElementById('scanBtn');
+          const meetings = res.activeMeetings || (res.activeMeeting ? [res.activeMeeting] : []);
+
+          if (meetings.length === 0) {
+            meetingBox.innerHTML = `
+              <div style="background:#f8f9fa; border:1px solid #ddd; padding:15px; border-radius:8px; text-align:center; color:#666;">
+                ☕ 目前無開放簽到的會議
+              </div>`;
+            scanBtn.disabled = true;
           } else {
-            document.getElementById('meetingName').innerText = "目前無開放簽到的會議";
-            document.getElementById('scanBtn').disabled = true;
+            scanBtn.disabled = false;
+            let html = '';
+
+            meetings.forEach(m => {
+              if (m.isSigned) {
+                // 已簽到：綠色卡片
+                html += `
+                  <div style="background:#e6f4ea; border:1px solid #137333; padding:12px 15px; border-radius:8px; margin-bottom:10px; text-align:left;">
+                    <div style="color:#137333; font-weight:bold; font-size:16px;">🟢 【${m.name}】</div>
+                    <div style="color:#202124; font-size:13px; margin-top:4px;">✅ 您已完成簽到</div>
+                  </div>`;
+              } else {
+                // 未簽到：橘色/淡黃卡片
+                html += `
+                  <div style="background:#fef7e0; border:1px solid #b06000; padding:12px 15px; border-radius:8px; margin-bottom:10px; text-align:left;">
+                    <div style="color:#b06000; font-weight:bold; font-size:16px;">📍 【${m.name}】開放簽到中</div>
+                    <div style="color:#5f6368; font-size:13px; margin-top:4px;">👉 請點擊下方按鈕，掃描會議現場條碼完成簽到。</div>
+                  </div>`;
+              }
+            });
+
+            meetingBox.innerHTML = html;
           }
         }
       });
@@ -164,6 +194,10 @@
           callGasApi("processQrCheckIn", { myLineUserId: myLineUserId, scannedCode: result.value })
             .then(res => {
               alert(res.message);
+              // 簽到成功後，自動刷新頁面資料，更新會議卡片狀態
+              if (res.success) {
+                initSystemData();
+              }
             });
         }
       })
@@ -198,7 +232,6 @@
         d.uncheckedList.forEach(u => {
           const boundBadge = u.isBound ? '<span class="badge badge-success">已綁定</span>' : '<span class="badge badge-danger">未綁定</span>';
           
-          // 勾選框：已綁定人員預設勾選；未綁定者停用並提示說明
           const checkboxHtml = u.isBound && u.lineUserId
             ? `<input type="checkbox" class="remind-checkbox" value="${u.lineUserId}" checked style="width:20px; height:20px; margin:0; cursor:pointer;" title="勾選發送提醒">`
             : `<input type="checkbox" disabled style="width:20px; height:20px; margin:0; opacity:0.3;" title="未綁定 LINE 帳號，無法發送">`;
@@ -235,7 +268,6 @@
     }
   }
 
-  // 提醒勾選全選 / 全不選
   function toggleRemindSelectAll() {
     isRemindAllSelected = !isRemindAllSelected;
     const checkboxes = document.querySelectorAll('.remind-checkbox:not(:disabled)');
@@ -244,7 +276,6 @@
     });
   }
 
-  // 僅發送提醒給有勾選的同仁
   function sendRemindersToSelected() {
     const meeting = document.getElementById('adminMeetingSelect').value;
     const checkedBoxes = document.querySelectorAll('.remind-checkbox:checked');
@@ -264,6 +295,7 @@
   function closeAdminView() {
     document.getElementById('adminView').style.display = 'none';
     document.getElementById('checkInView').style.display = 'block';
+    initSystemData(); // 返回簽到頁面時同步更新狀態
   }
 </script>
 
