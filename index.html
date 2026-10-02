@@ -1,266 +1,237 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GPS 會議簽到系統</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>學校會議簽到系統</title>
+  <!-- 載入 LINE LIFF SDK -->
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 15px; background: #f4f6f8; color: #333; margin: 0; }
-    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 15px; }
-    h2 { margin-top: 0; color: #00b900; }
-    input[type="text"] { width: 100%; padding: 12px; margin: 8px 0 15px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
-    button { width: 100%; background: #00b900; color: white; border: none; padding: 14px; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
-    button:disabled { background: #ccc; }
-    .admin-btn { background: #007bff; margin-top: 10px; }
-    .remind-btn { background: #ff9800; margin-top: 10px; }
-    .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-    .badge-success { background: #e8f5e9; color: #2e7d32; }
-    .badge-danger { background: #ffebee; color: #c62828; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f6f9; margin: 0; padding: 20px; color: #333; }
+    .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); max-width: 480px; margin: 0 auto; }
+    h2 { margin-top: 0; color: #1DB446; text-align: center; }
+    label { font-weight: bold; margin-top: 10px; display: block; }
+    input, select { width: 100%; padding: 12px; margin: 8px 0 15px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; font-size: 16px; }
+    button { width: 100%; background: #1DB446; color: white; border: none; padding: 14px; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    .scan-btn { background: #007bff; font-size: 18px; margin-top: 15px; }
+    .admin-btn { background: #6c757d; margin-top: 10px; }
+    .remind-btn { background: #ff9800; margin-top: 15px; }
     .user-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; }
-    #loading { text-align: center; padding: 40px; }
+    .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; color: white; }
+    .badge-success { background: #28a745; }
+    .badge-danger { background: #dc3545; }
+    #loading { text-align: center; font-size: 18px; color: #666; margin-top: 50px; }
   </style>
 </head>
 <body>
 
-  <div id="loading">系統連線驗證中，請稍候...</div>
+<div id="loading">⏳ 系統連線驗證中，請稍後...</div>
 
-  <div id="app" style="display:none;">
-    <!-- 未綁定畫面 -->
-    <div id="bindView" class="card" style="display:none;">
+<!-- 未綁定畫面 -->
+<div id="bindView" class="card" style="display:none;">
   <h2>首次身分綁定</h2>
-  <p style="font-size: 14px; color: #666;">請輸入您的真實姓名與 5 位數身分識別碼進行驗證。</p>
+  <p style="font-size: 14px; color: #666;">請輸入您的真實姓名與 5 位數身分識別碼驗證。</p>
   <label>教師姓名：</label>
   <input type="text" id="bindName" placeholder="例：張大明">
   <label>身分識別碼 (5碼)：</label>
   <input type="text" id="bindIdCode" maxlength="5" placeholder="例：01234">
   <button onclick="submitBinding()">確認綁定</button>
-  
   <div id="contactInfo" style="margin-top: 15px; font-size: 13px; color: #777; display:none;">
     查無身分？請聯絡管理員：<span id="adminName"></span> (<a id="adminPhone" href=""></a>)
   </div>
 </div>
 
-    <!-- 簽到主頁面 -->
-    <div id="checkInView" class="card" style="display:none;">
-      <h2>GPS 會議簽到</h2>
-      <p>歡迎，<b id="userInfo"></b> 老師</p>
-      
-      <div id="meetingBox" style="background:#f9f9f9; padding:12px; border-radius:6px; margin: 15px 0;">
-        <span id="meetingStatus">搜尋開放會議中...</span>
-      </div>
+<!-- 已綁定 / 簽到畫面 -->
+<div id="checkInView" class="card" style="display:none;">
+  <h2 id="welcomeText">您好！</h2>
+  <div id="meetingBox" style="background: #eef9f1; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+    <h3 id="meetingName" style="margin:0 0 10px; color:#1DB446;">載入會議中...</h3>
+    <p style="margin:0; font-size:14px; color:#555;">📍 請點擊下方按鈕，掃描會議現場條碼完成簽到。</p>
+  </div>
+  
+  <button id="scanBtn" class="scan-btn" onclick="triggerQrScanner()">📷 掃描現場 QR Code 簽到</button>
+  <button id="adminBtn" class="admin-btn" style="display:none;" onclick="showAdminView()">開啟管理員看板</button>
+</div>
 
-      <button id="btnCheckIn" onclick="doCheckIn()" disabled>按此 GPS 簽到</button>
-      <button id="btnAdminToggle" class="admin-btn" onclick="showAdminView()" style="display:none;">開啟管理員看板</button>
-    </div>
-
-    <!-- 管理員後台視窗 -->
+<!-- 管理員視窗 -->
 <div id="adminView" class="card" style="display:none;">
   <h2 style="color:#007bff;">管理員簽到看板</h2>
-  
-  <label style="font-weight:bold; font-size:14px; color:#555;">選擇查看會議：</label>
-  <select id="adminMeetingSelect" onchange="switchAdminMeeting()" style="width:100%; padding:10px; margin: 8px 0 15px; border-radius:6px; border:1px solid #ddd; font-size:15px; background:white;"></select>
-
+  <label>選擇查看會議：</label>
+  <select id="adminMeetingSelect" onchange="switchAdminMeeting()"></select>
   <div id="adminStats" style="font-size:15px; font-weight:bold; margin-bottom:15px;"></div>
-  
   <h3>未簽到人員名單</h3>
   <div id="uncheckedList"></div>
-
   <button class="remind-btn" onclick="sendRemindersToAll()">一鍵 LINE 發送提醒</button>
   <button style="background:#666; margin-top:10px;" onclick="closeAdminView()">返回簽到頁面</button>
 </div>
 
-  <script>
-    // ⚠️ 請填入您的 LIFF ID 與 GAS Web App 發布網址
-    const LIFF_ID = "2011810210-ESVfHIBL"; 
-    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwV6-_xUaU5_3TAjiSBqDm2QZrN68-I8pOACwSHpBjWuDRQho1JfbQUP9030orQ2zHj/exec"; 
+<script>
+  // ⚙️ 系統設定（請務必替換這兩項）
+  const MY_LIFF_ID = "2011810210-ESVfHIBL"; // 例："2001234567-AbCdEfGh"
+  const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwHOCTSRe78iYaveaiZgsatnALzW6whRbDWENR6Mo1PSodNqTj8xC5xJ9ogMERZPgo3/exec"; // 例："https://script.google.com/macros/s/.../exec"
 
-    let myLineUserId = "";
-    let currentMeeting = null;
+  let myLineUserId = "";
+  let currentMeetingName = "";
 
-    // 通用 API 請求函式（取代 google.script.run）
-    function callGasApi(action, payload = {}) {
-      return fetch(GAS_WEB_APP_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify({ action: action, ...payload })
-      }).then(res => res.json());
-    }
-
-    // 初始化 LIFF
-    window.onload = function() {
-      liff.init({ liffId: LIFF_ID }).then(() => {
+  window.onload = function() {
+    liff.init({ liffId: MY_LIFF_ID })
+      .then(() => {
         if (!liff.isLoggedIn()) {
           liff.login();
         } else {
           liff.getProfile().then(profile => {
             myLineUserId = profile.userId;
-            loadSystemData();
+            initSystemData();
           });
         }
-      }).catch(err => alert("LIFF 初始化失敗: " + err));
-    };
+      })
+      .catch(err => {
+        document.getElementById('loading').innerText = "LIFF 初始化失敗，請確認網路或 LIFF ID 設定是否正確。";
+        console.error(err);
+      });
+  };
 
-    function loadSystemData() {
-      callGasApi("getInitialData", { myLineUserId: myLineUserId })
-        .then(data => {
-          document.getElementById('loading').style.display = 'none';
-          document.getElementById('app').style.display = 'block';
+  // 跨域呼叫 GAS API
+  function callGasApi(action, extraData = {}) {
+    const payload = Object.assign({ action: action }, extraData);
+    return fetch(GAS_WEB_APP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" }, // 避開 CORS 預檢請求
+      body: JSON.stringify(payload)
+    }).then(res => res.json());
+  }
 
-          if (!data.isBound) {
-            document.getElementById('bindView').style.display = 'block';
-            if (data.adminContact) {
-              document.getElementById('contactInfo').style.display = 'block';
-              document.getElementById('adminName').innerText = data.adminContact;
-              document.getElementById('adminPhone').innerText = data.adminPhone;
-              document.getElementById('adminPhone').href = "tel:" + data.adminPhone;
-            }
-          } else {
-            document.getElementById('checkInView').style.display = 'block';
-            document.getElementById('userInfo').innerText = data.userName;
+  function initSystemData() {
+    callGasApi("getInitialData", { myLineUserId: myLineUserId })
+      .then(res => {
+        document.getElementById('loading').style.display = 'none';
 
-            if (data.isAdmin) {
-              document.getElementById('btnAdminToggle').style.display = 'block';
-            }
-
-            if (data.activeMeeting) {
-              currentMeeting = data.activeMeeting;
-              document.getElementById('meetingBox').innerHTML = `<b>當前開放會議：</b><br>${data.activeMeeting.name}`;
-              document.getElementById('btnCheckIn').disabled = false;
-            } else {
-              document.getElementById('meetingBox').innerHTML = `目前非開放簽到時間。`;
-            }
+        if (!res.isBound) {
+          document.getElementById('bindView').style.display = 'block';
+          if (res.adminContact) {
+            document.getElementById('contactInfo').style.display = 'block';
+            document.getElementById('adminName').innerText = res.adminContact;
+            document.getElementById('adminPhone').innerText = res.adminPhone;
+            document.getElementById('adminPhone').href = "tel:" + res.adminPhone;
           }
-        })
-        .catch(err => alert("載入系統資料失敗：" + err));
-    }
+        } else {
+          document.getElementById('checkInView').style.display = 'block';
+          document.getElementById('welcomeText').innerText = `👋 ${res.userName} 老師`;
 
-    function submitBinding() {
-  const name = document.getElementById('bindName').value;
-  const idCode = document.getElementById('bindIdCode').value;
+          if (res.isAdmin) {
+            document.getElementById('adminBtn').style.display = 'block';
+          }
 
-  if (!name || !idCode) return alert('請填寫完整資訊！');
-  if (idCode.length !== 5) return alert('識別碼必須為 5 位數字！'); // 檢查改為 5 碼
-
-  callGasApi("bindUser", { myLineUserId: myLineUserId, name: name, idCode: idCode })
-    .then(res => {
-      alert(res.message);
-      if (res.success) location.reload();
-    })
-    .catch(err => alert("綁定請求失敗：" + err));
-}
-
-    function doCheckIn() {
-      if (!navigator.geolocation) return alert('您的裝置不支援 GPS 定位！');
-
-      document.getElementById('btnCheckIn').disabled = true;
-      document.getElementById('btnCheckIn').innerText = '定位與比對中...';
-
-      navigator.geolocation.getCurrentPosition(pos => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-
-        callGasApi("processCheckIn", { myLineUserId: myLineUserId, lat: lat, lng: lng })
-          .then(res => {
-            alert(res.message);
-            document.getElementById('btnCheckIn').disabled = false;
-            document.getElementById('btnCheckIn').innerText = '按此 GPS 簽到';
-          })
-          .catch(err => {
-            alert("簽到請求失敗：" + err);
-            document.getElementById('btnCheckIn').disabled = false;
-            document.getElementById('btnCheckIn').innerText = '按此 GPS 簽到';
-          });
-      }, err => {
-        alert('取得 GPS 定位失敗，請確認已開啟定位權限！');
-        document.getElementById('btnCheckIn').disabled = false;
-        document.getElementById('btnCheckIn').innerText = '按此 GPS 簽到';
-      }, { enableHighAccuracy: true });
-    }
-
-    function showAdminView(targetMeetingName) {
-  document.getElementById('checkInView').style.display = 'none';
-  document.getElementById('adminView').style.display = 'block';
-
-  callGasApi("getAdminDashboardData", { targetMeetingName: targetMeetingName || "" })
-    .then(res => {
-      if (!res.success) return alert(res.message);
-
-      const d = res.data;
-      
-      // 動態產生會議下拉選單選項
-      const selectEl = document.getElementById('adminMeetingSelect');
-      selectEl.innerHTML = '';
-      d.allMeetings.forEach(mName => {
-        const opt = document.createElement('option');
-        opt.value = mName;
-        opt.innerText = mName;
-        if (mName === d.meetingName) opt.selected = true;
-        selectEl.appendChild(opt);
+          if (res.activeMeeting) {
+            currentMeetingName = res.activeMeeting.name;
+            document.getElementById('meetingName').innerText = `【${res.activeMeeting.name}】開放簽到中`;
+          } else {
+            document.getElementById('meetingName').innerText = "目前無開放簽到的會議";
+            document.getElementById('scanBtn').disabled = true;
+          }
+        }
       });
+  }
 
-      document.getElementById('adminStats').innerText = `【${d.meetingName}】 應到：${d.totalCount}人 | 已到：${d.checkedCount}人 | 未到：${d.uncheckedList.length}人`;
+  function submitBinding() {
+    const name = document.getElementById('bindName').value;
+    const idCode = document.getElementById('bindIdCode').value;
+    if (!name || !idCode) return alert('請填寫完整資訊！');
+    if (idCode.length !== 5) return alert('識別碼必須為 5 位數字！');
 
-      let html = '';
-      d.uncheckedList.forEach(u => {
-        const boundBadge = u.isBound ? '<span class="badge badge-success">已綁定</span>' : '<span class="badge badge-danger">未綁定</span>';
-        html += `
-          <div class="user-row">
-            <div><b>${u.name}</b> ${boundBadge}</div>
-            <div><button style="padding:6px 10px; font-size:12px; width:auto;" onclick="manualCheckIn('${u.name}')">代簽</button></div>
-          </div>`;
-      });
-      document.getElementById('uncheckedList').innerHTML = html || '所有人皆已完成簽到！';
-    })
-    .catch(err => alert("取得看板資料失敗：" + err));
-}
-
-function switchAdminMeeting() {
-  const selectedMeeting = document.getElementById('adminMeetingSelect').value;
-  showAdminView(selectedMeeting);
-}
-
-function manualCheckIn(name) {
-  const currentMeeting = document.getElementById('adminMeetingSelect').value;
-  if (confirm(`確定要為 ${name} 老師手動代簽【${currentMeeting}】嗎？`)) {
-    callGasApi("adminManualCheckIn", { name: name, myLineUserId: myLineUserId, targetMeetingName: currentMeeting })
+    callGasApi("bindUser", { myLineUserId: myLineUserId, name: name, idCode: idCode })
       .then(res => {
         alert(res.message);
-        showAdminView(currentMeeting); // 刷新該會議看板
-      })
-      .catch(err => alert("代簽操作失敗：" + err));
+        if (res.success) location.reload();
+      });
   }
-}
 
-    function closeAdminView() {
-      document.getElementById('adminView').style.display = 'none';
-      document.getElementById('checkInView').style.display = 'block';
+  // 📷 喚起 LINE 鏡頭進行現場條碼掃描
+  function triggerQrScanner() {
+    if (!liff.scanCodeV2) {
+      return alert("您的 LINE 版本不支援 scanCodeV2，請更新 LINE App！");
     }
 
-    function manualCheckIn(name) {
-      if (confirm(`確定要為 ${name} 老師手動代簽嗎？`)) {
-        callGasApi("adminManualCheckIn", { name: name, myLineUserId: myLineUserId })
-          .then(res => {
-            alert(res.message);
-            showAdminView(); // 刷新
-          })
-          .catch(err => alert("代簽操作失敗：" + err));
-      }
-    }
+    liff.scanCodeV2()
+      .then(result => {
+        if (result.value) {
+          callGasApi("processQrCheckIn", { myLineUserId: myLineUserId, scannedCode: result.value })
+            .then(res => {
+              alert(res.message);
+            });
+        }
+      })
+      .catch(err => {
+        console.log("使用者取消掃描或發生錯誤", err);
+      });
+  }
 
-    function sendRemindersToAll() {
-      callGasApi("getAdminDashboardData")
+  // 管理員看板相關操作
+  function showAdminView(targetMeetingName) {
+    document.getElementById('checkInView').style.display = 'none';
+    document.getElementById('adminView').style.display = 'block';
+
+    callGasApi("getAdminDashboardData", { targetMeetingName: targetMeetingName || "" })
+      .then(res => {
+        if (!res.success) return alert(res.message);
+        const d = res.data;
+        
+        const selectEl = document.getElementById('adminMeetingSelect');
+        selectEl.innerHTML = '';
+        d.allMeetings.forEach(mName => {
+          const opt = document.createElement('option');
+          opt.value = mName;
+          opt.innerText = mName;
+          if (mName === d.meetingName) opt.selected = true;
+          selectEl.appendChild(opt);
+        });
+
+        document.getElementById('adminStats').innerText = `【${d.meetingName}】 應到：${d.totalCount}人 | 已到：${d.checkedCount}人 | 未到：${d.uncheckedList.length}人`;
+
+        let html = '';
+        d.uncheckedList.forEach(u => {
+          const boundBadge = u.isBound ? '<span class="badge badge-success">已綁定</span>' : '<span class="badge badge-danger">未綁定</span>';
+          html += `
+            <div class="user-row">
+              <div><b>${u.name}</b> ${boundBadge}</div>
+              <div><button style="padding:6px 10px; font-size:12px; width:auto;" onclick="manualCheckIn('${u.name}')">代簽</button></div>
+            </div>`;
+        });
+        document.getElementById('uncheckedList').innerHTML = html || '所有人皆已完成簽到！';
+      });
+  }
+
+  function switchAdminMeeting() {
+    showAdminView(document.getElementById('adminMeetingSelect').value);
+  }
+
+  function manualCheckIn(name) {
+    const meeting = document.getElementById('adminMeetingSelect').value;
+    if (confirm(`確定要為 ${name} 老師手動代簽【${meeting}】嗎？`)) {
+      callGasApi("adminManualCheckIn", { name: name, myLineUserId: myLineUserId, targetMeetingName: meeting })
         .then(res => {
-          if (!res.success) return alert(res.message);
-
-          const targetIds = res.data.uncheckedList.map(u => u.lineUserId);
-          return callGasApi("sendReminders", { targetIds: targetIds, meetingName: res.data.meetingName });
-        })
-        .then(remRes => {
-          if (remRes) alert(remRes.message);
-        })
-        .catch(err => alert("發送提醒失敗：" + err));
+          alert(res.message);
+          showAdminView(meeting);
+        });
     }
-  </script>
+  }
+
+  function sendRemindersToAll() {
+    const meeting = document.getElementById('adminMeetingSelect').value;
+    callGasApi("getAdminDashboardData", { targetMeetingName: meeting })
+      .then(res => {
+        const ids = res.data.uncheckedList.map(u => u.lineUserId);
+        callGasApi("sendReminders", { targetIds: ids, meetingName: meeting })
+          .then(r => alert(r.message));
+      });
+  }
+
+  function closeAdminView() {
+    document.getElementById('adminView').style.display = 'none';
+    document.getElementById('checkInView').style.display = 'block';
+  }
+</script>
+
 </body>
 </html>
