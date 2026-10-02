@@ -6,8 +6,6 @@
   <title>學校會議簽到系統</title>
   <!-- 載入 LINE LIFF SDK -->
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <!-- 載入輕量級 QR Code 圖片解析套件 (備援簽到用) -->
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f6f9; margin: 0; padding: 20px; color: #333; }
     .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); max-width: 480px; margin: 0 auto; }
@@ -17,7 +15,7 @@
     button { width: 100%; background: #1DB446; color: white; border: none; padding: 14px; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
     button:disabled { background: #ccc; cursor: not-allowed; }
     .scan-btn { background: #007bff; font-size: 18px; margin-top: 15px; }
-    .upload-btn { background: #17a2b8; font-size: 16px; margin-top: 10px; }
+    .manual-toggle-btn { background: #17a2b8; font-size: 15px; margin-top: 10px; }
     .admin-btn { background: #6c757d; margin-top: 10px; }
     .remind-btn { background: #ff9800; margin-top: 15px; }
     .user-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; }
@@ -53,12 +51,17 @@
   <div id="meetingBox" style="margin-bottom: 15px;">
     <div style="text-align:center; color:#777; padding:15px;">載入會議中...</div>
   </div>
-  
-  <!-- 隱藏的檔案選擇輸入框（支援拍攝或挑選相片） -->
-  <input type="file" id="qrFileInput" accept="image/*" style="display:none;" onchange="handleFileUpload(event)">
 
   <button id="scanBtn" class="scan-btn" onclick="triggerQrScanner()">📷 掃描現場 QR Code 簽到</button>
-  <button id="uploadBtn" class="upload-btn" onclick="triggerFilePicker()">🖼️ 拍照 / 選擇照片簽到 (備援)</button>
+  <button id="manualToggleBtn" class="manual-toggle-btn" onclick="toggleManualInputBox()">⌨️ 輸入驗證碼簽到 (備援)</button>
+  
+  <!-- 備援：輸入文字驗證碼區塊 -->
+  <div id="manualInputBox" style="display:none; margin-top:12px; padding:15px; background:#f8f9fa; border:1px solid #ced4da; border-radius:8px;">
+    <label style="margin-top:0; color:#495057;">請輸入現場會議驗證碼：</label>
+    <input type="text" id="manualPasscode" placeholder="請輸入驗證碼 (英數皆可)" style="margin-bottom:10px;">
+    <button style="background:#17a2b8;" onclick="submitManualCode()">確認送出簽到</button>
+  </div>
+
   <button id="adminBtn" class="admin-btn" style="display:none;" onclick="showAdminView()">開啟管理員看板</button>
 </div>
 
@@ -86,7 +89,6 @@
   const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwHOCTSRe78iYaveaiZgsatnALzW6whRbDWENR6Mo1PSodNqTj8xC5xJ9ogMERZPgo3/exec";
 
   let myLineUserId = "";
-  let currentMeetingName = "";
   let isRemindAllSelected = true;
 
   window.onload = function() {
@@ -141,7 +143,7 @@
 
           const meetingBox = document.getElementById('meetingBox');
           const scanBtn = document.getElementById('scanBtn');
-          const uploadBtn = document.getElementById('uploadBtn');
+          const manualToggleBtn = document.getElementById('manualToggleBtn');
           const meetings = res.activeMeetings || (res.activeMeeting ? [res.activeMeeting] : []);
 
           if (meetings.length === 0) {
@@ -150,10 +152,10 @@
                 ☕ 目前無開放簽到的會議
               </div>`;
             scanBtn.disabled = true;
-            uploadBtn.disabled = true;
+            manualToggleBtn.disabled = true;
           } else {
             scanBtn.disabled = false;
-            uploadBtn.disabled = false;
+            manualToggleBtn.disabled = false;
             let html = '';
 
             meetings.forEach(m => {
@@ -169,7 +171,7 @@
                 html += `
                   <div style="background:#fef7e0; border:1px solid #b06000; padding:12px 15px; border-radius:8px; margin-bottom:10px; text-align:left;">
                     <div style="color:#b06000; font-weight:bold; font-size:16px;">📍 【${m.name}】開放簽到中</div>
-                    <div style="color:#5f6368; font-size:13px; margin-top:4px;">👉 請點擊下方按鈕，掃描會議現場條碼完成簽到。</div>
+                    <div style="color:#5f6368; font-size:13px; margin-top:4px;">👉 請點擊下方按鈕，掃描現場條碼或輸入驗證碼完成簽到。</div>
                   </div>`;
               }
             });
@@ -196,7 +198,7 @@
   // 1. 主要簽到：呼叫 LINE LIFF 相機掃描
   function triggerQrScanner() {
     if (!liff.scanCodeV2) {
-      return alert("您的 LINE 版本不支援 scanCodeV2，請嘗試使用下方【備援簽到】按鈕！");
+      return alert("您的 LINE 版本不支援 scanCodeV2，請使用下方【輸入驗證碼簽到】功能！");
     }
 
     liff.scanCodeV2()
@@ -207,46 +209,23 @@
       })
       .catch(err => {
         console.log("使用者取消掃描或發生錯誤", err);
-        alert("相機開啟失敗或已取消。若遇到相機問題，請改用下方【拍照 / 選擇照片簽到 (備援)】功能！");
+        alert("相機開啟失敗。請改用下方【⌨️ 輸入驗證碼簽到 (備援)】按鈕！");
       });
   }
 
-  // 2. 備援簽到：觸發檔案／拍照選單
-  function triggerFilePicker() {
-    document.getElementById('qrFileInput').click();
+  // 2. 切換顯示/隱藏手動輸入框
+  function toggleManualInputBox() {
+    const box = document.getElementById('manualInputBox');
+    box.style.display = (box.style.display === 'none') ? 'block' : 'none';
   }
 
-  // 3. 解析上傳的照片 / 現場拍攝照片中的 QR Code
-  function handleFileUpload(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    // 清空 input 確保能重複選擇同張照片
-    event.target.value = '';
-
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      const img = new Image();
-      img.onload = function() {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0, img.width, img.height);
-
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        // 使用 jsQR 解析圖像像素數據
-        const code = jsQR(imageData.data, imageData.width, imageData.height);
-
-        if (code && code.data) {
-          submitQrPasscode(code.data);
-        } else {
-          alert("⚠️ 照片解析失敗：無法讀取到清晰的 QR Code，請確認照片包含完整且清晰的條碼後重試！");
-        }
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
+  // 3. 送出手動輸入的驗證碼
+  function submitManualCode() {
+    const inputEl = document.getElementById('manualPasscode');
+    const code = inputEl.value.trim();
+    if (!code) return alert("請先輸入會議驗證碼！");
+    
+    submitQrPasscode(code);
   }
 
   // 統一處理簽到驗證請求
@@ -255,7 +234,9 @@
       .then(res => {
         alert(res.message);
         if (res.success) {
-          initSystemData(); // 簽到成功後重新更新介面狀態
+          document.getElementById('manualPasscode').value = ''; // 清空輸入框
+          document.getElementById('manualInputBox').style.display = 'none'; // 隱藏輸入框
+          initSystemData(); // 簽到成功後更新介面狀態
         }
       });
   }
