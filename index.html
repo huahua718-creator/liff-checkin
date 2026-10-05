@@ -135,7 +135,8 @@
         } else {
           document.getElementById('bindView').style.display = 'none';
           document.getElementById('checkInView').style.display = 'block';
-          document.getElementById('welcomeText').innerText = `👋 ${res.userName} 老師`;
+          const titleDisplay = res.userTitle ? ` ${res.userTitle}` : " 老師";
+          document.getElementById('welcomeText').innerText = `👋 嗨 ${res.userName}${titleDisplay}`;;
 
           if (res.isAdmin) {
             document.getElementById('adminBtn').style.display = 'block';
