@@ -247,7 +247,7 @@
     document.getElementById('checkInView').style.display = 'none';
     document.getElementById('adminView').style.display = 'block';
 
-    callGasApi("getAdminDashboardData", { targetMeetingName: targetMeetingName || "" })
+    callGasApi("getAdminDashboardData", { targetMeetingName: targetMeetingName || "", myLineUserId: myLineUserId })
       .then(res => {
         if (!res.success) return alert(res.message);
         const d = res.data;
