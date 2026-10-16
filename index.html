@@ -187,7 +187,7 @@
     const name = document.getElementById('bindName').value;
     const idCode = document.getElementById('bindIdCode').value;
     if (!name || !idCode) return alert('請填寫完整資訊！');
-    if (idCode.length !== 5) return alert('識別碼必須為 5 位數字！');
+    if (idCode.length !== 3) return alert('識別碼必須為 3 位數字！');
 
     callGasApi("bindUser", { myLineUserId: myLineUserId, name: name, idCode: idCode })
       .then(res => {
