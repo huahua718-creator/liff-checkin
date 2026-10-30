@@ -46,6 +46,7 @@
 <!-- 已綁定 / 簽到畫面 -->
 <div id="checkInView" class="card" style="display:none;">
   <h2 id="welcomeText">您好！</h2>
+  <button id="sysAdminBtn" style="display:none; background:#8e44ad; color:white; margin-top:10px;" onclick="showSysAdminMeetingView()">⚙️ 會議地點與時間設定 (最高管理員)</button>
   
   <!-- 多會議動態列表容器 -->
   <div id="meetingBox" style="margin-bottom: 15px;">
@@ -65,6 +66,51 @@
   <button id="adminBtn" class="admin-btn" style="display:none;" onclick="showAdminView()">開啟管理員看板</button>
 </div>
 
+<!-- 最高管理員：會議地點與時間設定視窗 -->
+<div id="sysAdminMeetingView" class="card" style="display:none;">
+  <h2 style="color:#8e44ad;">⚙️ 會議地點與時間設定</h2>
+  <button style="background:#27ae60; margin-bottom:15px;" onclick="openMeetingEditModal()">➕ 新增會議設定</button>
+  
+  <div id="sysMeetingList">載入會議資料中...</div>
+
+  <button style="background:#666; margin-top:15px;" onclick="closeSysAdminView()">返回簽到主頁</button>
+</div>
+
+<!-- 新增/編輯會議 Modal 彈窗 -->
+<div id="meetingEditModal" class="card" style="display:none; border:2px solid #8e44ad; margin-top:15px;">
+  <h3 id="modalTitle" style="margin-top:0; color:#8e44ad;">新增會議</h3>
+  <input type="hidden" id="editRowIndex">
+  
+  <label>會議名稱：</label>
+  <input type="text" id="mName" placeholder="例如：教務處處務會議">
+  
+  <label>簽到日期/星期：</label>
+  <input type="text" id="mDateRule" placeholder="例如：2026/10/16 或 週五">
+  
+  <label>開始時間 (HH:mm)：</label>
+  <input type="text" id="mStartTime" placeholder="例如：08:00">
+  
+  <label>結束時間 (HH:mm)：</label>
+  <input type="text" id="mEndTime" placeholder="例如：12:00">
+  
+  <label>現場驗證碼：</label>
+  <input type="text" id="mPasscode" placeholder="例如：9527">
+  
+  <label>啟用狀態：</label>
+  <select id="mStatus">
+    <option value="啟用">啟用</option>
+    <option value="停用">停用</option>
+  </select>
+  
+  <label>應到對象：</label>
+  <input type="text" id="mTarget" placeholder="例如：全體 或 教務處 (預設全體)">
+  
+  <label>會議管理員 (姓名用逗號隔開)：</label>
+  <input type="text" id="mAdmins" placeholder="例如：李孟真, 王小明">
+  
+  <button style="background:#8e44ad; margin-top:10px;" onclick="submitMeetingForm()">儲存設定</button>
+  <button style="background:#95a5a6; margin-top:8px;" onclick="closeMeetingModal()">取消</button>
+</div>
 <!-- 管理員視窗 -->
 <div id="adminView" class="card" style="display:none;">
   <h2 style="color:#007bff;">管理員簽到看板</h2>
@@ -140,6 +186,9 @@
 
           if (res.isAdmin) {
             document.getElementById('adminBtn').style.display = 'block';
+          }
+          if (res.isSysAdmin) {
+            document.getElementById('sysAdminBtn').style.display = 'block'; // 只有最高管理員看得見
           }
 
           const meetingBox = document.getElementById('meetingBox');
@@ -333,6 +382,127 @@
     document.getElementById('checkInView').style.display = 'block';
     initSystemData();
   }
+  // 開啟最高管理員會議設定畫面
+function showSysAdminMeetingView() {
+  document.getElementById('checkInView').style.display = 'none';
+  document.getElementById('sysAdminMeetingView').style.display = 'block';
+  loadSysAdminMeetings();
+}
+
+function closeSysAdminView() {
+  document.getElementById('sysAdminMeetingView').style.display = 'none';
+  document.getElementById('checkInView').style.display = 'block';
+  initSystemData(); // 重新整理簽到頁面
+}
+
+// 載入所有會議設定
+function loadSysAdminMeetings() {
+  const container = document.getElementById('sysMeetingList');
+  container.innerHTML = '⏳ 載入中...';
+
+  callGasApi("getMeetingSettingsData", { myLineUserId: myLineUserId })
+    .then(res => {
+      if (!res.success) {
+        alert(res.message);
+        return closeSysAdminView();
+      }
+
+      let html = '';
+      res.meetings.forEach(m => {
+        const isEnable = m.status === '啟用';
+        const badgeColor = isEnable ? '#28a745' : '#dc3545';
+        
+        html += `
+          <div style="background:#f8f9fa; border:1px solid #ddd; padding:12px; border-radius:8px; margin-bottom:10px; text-align:left;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <b style="font-size:16px;">${m.name}</b>
+              <span style="background:${badgeColor}; color:white; padding:2px 6px; border-radius:4px; font-size:12px;">${m.status}</span>
+            </div>
+            <div style="font-size:13px; color:#555; margin-top:5px;">
+              📅 日期：${m.dateRule} (${m.startTime} - ${m.endTime})<br>
+              🔑 驗證碼：<b>${m.passcode || '無'}</b> | 👥 對象：${m.target}<br>
+              👤 管理員：${m.meetingAdmins || '無'}
+            </div>
+            <div style="margin-top:8px; display:flex; gap:8px;">
+              <button style="padding:6px 10px; font-size:12px; background:#17a2b8; width:auto;" onclick='openMeetingEditModal(${JSON.stringify(m)})'>✏️ 編輯</button>
+              <button style="padding:6px 10px; font-size:12px; background:${isEnable ? '#e74c3c' : '#2ecc71'}; width:auto;" onclick="toggleStatus(${m.rowIndex}, '${isEnable ? '停用' : '啟用'}')">
+                ${isEnable ? '🚫 停用' : '✅ 啟用'}
+              </button>
+            </div>
+          </div>`;
+      });
+      container.innerHTML = html || '目前尚無任何會議設定。';
+    });
+}
+
+// 開啟新增/編輯 Modal
+function openMeetingEditModal(m = null) {
+  document.getElementById('meetingEditModal').style.display = 'block';
+  if (m) {
+    document.getElementById('modalTitle').innerText = '✏️ 編輯會議';
+    document.getElementById('editRowIndex').value = m.rowIndex;
+    document.getElementById('mName').value = m.name;
+    document.getElementById('mDateRule').value = m.dateRule;
+    document.getElementById('mStartTime').value = m.startTime;
+    document.getElementById('mEndTime').value = m.endTime;
+    document.getElementById('mPasscode').value = m.passcode;
+    document.getElementById('mStatus').value = m.status;
+    document.getElementById('mTarget').value = m.target;
+    document.getElementById('mAdmins').value = m.meetingAdmins;
+  } else {
+    document.getElementById('modalTitle').innerText = '➕ 新增會議';
+    document.getElementById('editRowIndex').value = '';
+    document.getElementById('mName').value = '';
+    document.getElementById('mDateRule').value = '';
+    document.getElementById('mStartTime').value = '';
+    document.getElementById('mEndTime').value = '';
+    document.getElementById('mPasscode').value = '';
+    document.getElementById('mStatus').value = '啟用';
+    document.getElementById('mTarget').value = '全體';
+    document.getElementById('mAdmins').value = '';
+  }
+}
+
+function closeMeetingModal() {
+  document.getElementById('meetingEditModal').style.display = 'none';
+}
+
+// 送出儲存
+function submitMeetingForm() {
+  const mData = {
+    rowIndex: document.getElementById('editRowIndex').value,
+    name: document.getElementById('mName').value.trim(),
+    dateRule: document.getElementById('mDateRule').value.trim(),
+    startTime: document.getElementById('mStartTime').value.trim(),
+    endTime: document.getElementById('mEndTime').value.trim(),
+    passcode: document.getElementById('mPasscode').value.trim(),
+    status: document.getElementById('mStatus').value,
+    target: document.getElementById('mTarget').value.trim(),
+    meetingAdmins: document.getElementById('mAdmins').value.trim()
+  };
+
+  if (!mData.name || !mData.dateRule || !mData.startTime || !mData.endTime) {
+    return alert('請填寫完整會議名稱、日期與時間！');
+  }
+
+  callGasApi("saveMeetingSetting", { myLineUserId: myLineUserId, meetingData: mData })
+    .then(res => {
+      alert(res.message);
+      if (res.success) {
+        closeMeetingModal();
+        loadSysAdminMeetings();
+      }
+    });
+}
+
+// 快速切換啟用/停用
+function toggleStatus(rowIndex, newStatus) {
+  callGasApi("toggleMeetingStatus", { myLineUserId: myLineUserId, rowIndex: rowIndex, newStatus: newStatus })
+    .then(res => {
+      alert(res.message);
+      if (res.success) loadSysAdminMeetings();
+    });
+}
 </script>
 
 </body>
