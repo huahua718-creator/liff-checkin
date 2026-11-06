@@ -45,7 +45,11 @@
 
 <!-- 已綁定 / 簽到畫面 -->
 <div id="checkInView" class="card" style="display:none;">
-  <h2 id="welcomeText">您好！</h2>
+  <div id="syncStatusTip" style="display:none; text-align:center; font-size:12px; padding:6px 10px; border-radius:6px; margin-bottom:12px; transition:all 0.3s ease;"></div>
+  <div style="display:flex; justify-content:center; align-items:center; gap:6px;">
+    <h2 id="welcomeText" style="margin:0;">您好！</h2>
+    <button type="button" onclick="manualRefresh()" style="background:none; border:none; padding:4px 6px; font-size:18px; cursor:pointer; width:auto; color:#666;" title="手動同步最新狀態">🔄</button>
+  </div>
   <button id="sysAdminBtn" style="display:none; background:#8e44ad; color:white; margin-top:10px;" onclick="showSysAdminMeetingView()">⚙️ 會議地點與時間設定 (最高管理員)</button>
   
   <!-- 多會議動態列表容器 -->
@@ -134,8 +138,47 @@
   const MY_LIFF_ID = "2011810210-ESVfHIBL";
   const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwHOCTSRe78iYaveaiZgsatnALzW6whRbDWENR6Mo1PSodNqTj8xC5xJ9ogMERZPgo3/exec";
 
+  // 🌟 選項一：LocalStorage 快取管理 (達到「0 秒秒開」無感體驗)
+  const CACHE_USER_KEY = "qrcode_checkin_user_profile";
+
+  function getLocalUserCache() {
+    try {
+      const data = localStorage.getItem(CACHE_USER_KEY);
+      return data ? JSON.parse(data) : null;
+    } catch (e) {
+      console.warn("讀取 LocalStorage 快取失敗：", e);
+      return null;
+    }
+  }
+
+  function saveLocalUserCache(data) {
+    try {
+      localStorage.setItem(CACHE_USER_KEY, JSON.stringify(data));
+    } catch (e) {
+      console.warn("寫入 LocalStorage 快取失敗：", e);
+    }
+  }
+
+  function clearLocalUserCache() {
+    try {
+      localStorage.removeItem(CACHE_USER_KEY);
+    } catch (e) {
+      console.warn("清除 LocalStorage 快取失敗：", e);
+    }
+  }
+
   let myLineUserId = "";
   let isRemindAllSelected = true;
+
+  // 🚀 關鍵：在 DOM 載入時立即從 LocalStorage 取出身分資料，0.01 秒內直接渲染畫面
+  const initialCachedUser = getLocalUserCache();
+  if (initialCachedUser && initialCachedUser.isBound) {
+    if (initialCachedUser.lineUserId) {
+      myLineUserId = initialCachedUser.lineUserId;
+    }
+    // 立即顯示身分與會議卡片 (標記為快取載入)
+    applyUserDataToUI(initialCachedUser, true);
+  }
 
   window.onload = function() {
     liff.init({ liffId: MY_LIFF_ID })
@@ -144,14 +187,37 @@
           liff.login();
         } else {
           liff.getProfile().then(profile => {
-            myLineUserId = profile.userId;
+            const currentUserId = profile.userId;
+
+            // 若使用者更換了 LINE 帳號，清除舊的快取並重設介面
+            if (myLineUserId && myLineUserId !== currentUserId) {
+              clearLocalUserCache();
+              document.getElementById('loading').style.display = 'block';
+              document.getElementById('checkInView').style.display = 'none';
+              document.getElementById('bindView').style.display = 'none';
+            }
+
+            myLineUserId = currentUserId;
+
+            // 背景同步最新資料 (使用者完全不會感覺到卡頓)
             initSystemData();
           });
         }
       })
       .catch(err => {
-        document.getElementById('loading').innerText = "LIFF 初始化失敗，請確認網路或 LIFF ID 設定是否正確。";
-        console.error(err);
+        console.error("LIFF 初始化異常：", err);
+        if (!initialCachedUser) {
+          document.getElementById('loading').innerText = "LIFF 初始化失敗，請確認網路或 LIFF ID 設定是否正確。";
+        } else {
+          const tipEl = document.getElementById('syncStatusTip');
+          if (tipEl) {
+            tipEl.style.display = 'block';
+            tipEl.style.color = '#721c24';
+            tipEl.style.background = '#f8d7da';
+            tipEl.style.border = '1px solid #f5c6cb';
+            tipEl.innerHTML = '⚠️ 網路連線逾時，目前顯示離線快取資料';
+          }
+        }
       });
   };
 
@@ -164,70 +230,142 @@
     }).then(res => res.json());
   }
 
+  // 繪製多會議卡片列表
+  function renderMeetings(meetings, isFromCache = false) {
+    const meetingBox = document.getElementById('meetingBox');
+    const scanBtn = document.getElementById('scanBtn');
+    const manualToggleBtn = document.getElementById('manualToggleBtn');
+
+    if (!meetings || meetings.length === 0) {
+      if (isFromCache) {
+        meetingBox.innerHTML = `
+          <div style="background:#f8f9fa; border:1px solid #ddd; padding:15px; border-radius:8px; text-align:center; color:#666;">
+            ⏳ 正在同步確認開會場次...
+          </div>`;
+      } else {
+        meetingBox.innerHTML = `
+          <div style="background:#f8f9fa; border:1px solid #ddd; padding:15px; border-radius:8px; text-align:center; color:#666;">
+            ☕ 目前無開放簽到的會議
+          </div>`;
+        scanBtn.disabled = true;
+        manualToggleBtn.disabled = true;
+      }
+      return;
+    }
+
+    scanBtn.disabled = false;
+    manualToggleBtn.disabled = false;
+    let html = '';
+
+    meetings.forEach(m => {
+      if (m.isSigned) {
+        // 已簽到：綠色卡片
+        html += `
+          <div style="background:#e6f4ea; border:1px solid #137333; padding:12px 15px; border-radius:8px; margin-bottom:10px; text-align:left;">
+            <div style="color:#137333; font-weight:bold; font-size:16px;">🟢 【${m.name}】</div>
+            <div style="color:#202124; font-size:13px; margin-top:4px;">✅ 您已完成簽到</div>
+          </div>`;
+      } else {
+        // 未簽到：橘色卡片
+        html += `
+          <div style="background:#fef7e0; border:1px solid #b06000; padding:12px 15px; border-radius:8px; margin-bottom:10px; text-align:left;">
+            <div style="color:#b06000; font-weight:bold; font-size:16px;">📍 【${m.name}】開放簽到中</div>
+            <div style="color:#5f6368; font-size:13px; margin-top:4px;">👉 請點擊下方按鈕，掃描現場條碼或輸入驗證碼完成簽到。</div>
+          </div>`;
+      }
+    });
+
+    meetingBox.innerHTML = html;
+  }
+
+  // 將資料渲染至介面
+  function applyUserDataToUI(res, isFromCache = false) {
+    document.getElementById('loading').style.display = 'none';
+
+    if (!res.isBound) {
+      document.getElementById('bindView').style.display = 'block';
+      document.getElementById('checkInView').style.display = 'none';
+      if (res.adminContact) {
+        document.getElementById('contactInfo').style.display = 'block';
+        document.getElementById('adminName').innerText = res.adminContact;
+        document.getElementById('adminPhone').innerText = res.adminPhone;
+        document.getElementById('adminPhone').href = "tel:" + res.adminPhone;
+      }
+      return;
+    }
+
+    document.getElementById('bindView').style.display = 'none';
+    document.getElementById('checkInView').style.display = 'block';
+
+    const titleDisplay = res.userTitle ? ` ${res.userTitle}` : " 老師";
+    document.getElementById('welcomeText').innerText = `👋 嗨 ${res.userName}${titleDisplay}`;
+
+    if (res.isAdmin) {
+      document.getElementById('adminBtn').style.display = 'block';
+    } else {
+      document.getElementById('adminBtn').style.display = 'none';
+    }
+
+    if (res.isSysAdmin) {
+      document.getElementById('sysAdminBtn').style.display = 'block';
+    } else {
+      document.getElementById('sysAdminBtn').style.display = 'none';
+    }
+
+    // 狀態同步提示條
+    const tipEl = document.getElementById('syncStatusTip');
+    if (tipEl) {
+      if (isFromCache) {
+        tipEl.style.display = 'block';
+        tipEl.style.color = '#0c5460';
+        tipEl.style.background = '#d1ecf1';
+        tipEl.style.border = '1px solid #bee5eb';
+        tipEl.innerHTML = '🔄 正在同步最新會議簽到狀態...';
+      } else {
+        tipEl.style.display = 'block';
+        tipEl.style.color = '#155724';
+        tipEl.style.background = '#d4edda';
+        tipEl.style.border = '1px solid #c3e6cb';
+        tipEl.innerHTML = '✅ 簽到狀態已同步';
+        setTimeout(() => {
+          tipEl.style.display = 'none';
+        }, 1500);
+      }
+    }
+
+    const meetings = res.activeMeetings || (res.activeMeeting ? [res.activeMeeting] : []);
+    renderMeetings(meetings, isFromCache);
+  }
+
   function initSystemData() {
     callGasApi("getInitialData", { myLineUserId: myLineUserId })
       .then(res => {
-        document.getElementById('loading').style.display = 'none';
-
-        if (!res.isBound) {
-          document.getElementById('bindView').style.display = 'block';
-          document.getElementById('checkInView').style.display = 'none';
-          if (res.adminContact) {
-            document.getElementById('contactInfo').style.display = 'block';
-            document.getElementById('adminName').innerText = res.adminContact;
-            document.getElementById('adminPhone').innerText = res.adminPhone;
-            document.getElementById('adminPhone').href = "tel:" + res.adminPhone;
-          }
+        if (res.isBound) {
+          // 儲存身分資料與最新會議至手機 LocalStorage
+          saveLocalUserCache({
+            lineUserId: myLineUserId,
+            userName: res.userName,
+            userTitle: res.userTitle,
+            isAdmin: res.isAdmin,
+            isSysAdmin: res.isSysAdmin,
+            isBound: true,
+            activeMeetings: res.activeMeetings
+          });
         } else {
-          document.getElementById('bindView').style.display = 'none';
-          document.getElementById('checkInView').style.display = 'block';
-          const titleDisplay = res.userTitle ? ` ${res.userTitle}` : " 老師";
-          document.getElementById('welcomeText').innerText = `👋 嗨 ${res.userName}${titleDisplay}`;
+          clearLocalUserCache();
+        }
 
-          if (res.isAdmin) {
-            document.getElementById('adminBtn').style.display = 'block';
-          }
-          if (res.isSysAdmin) {
-            document.getElementById('sysAdminBtn').style.display = 'block'; // 只有最高管理員看得見
-          }
-
-          const meetingBox = document.getElementById('meetingBox');
-          const scanBtn = document.getElementById('scanBtn');
-          const manualToggleBtn = document.getElementById('manualToggleBtn');
-          const meetings = res.activeMeetings || (res.activeMeeting ? [res.activeMeeting] : []);
-
-          if (meetings.length === 0) {
-            meetingBox.innerHTML = `
-              <div style="background:#f8f9fa; border:1px solid #ddd; padding:15px; border-radius:8px; text-align:center; color:#666;">
-                ☕ 目前無開放簽到的會議
-              </div>`;
-            scanBtn.disabled = true;
-            manualToggleBtn.disabled = true;
-          } else {
-            scanBtn.disabled = false;
-            manualToggleBtn.disabled = false;
-            let html = '';
-
-            meetings.forEach(m => {
-              if (m.isSigned) {
-                // 已簽到：綠色卡片
-                html += `
-                  <div style="background:#e6f4ea; border:1px solid #137333; padding:12px 15px; border-radius:8px; margin-bottom:10px; text-align:left;">
-                    <div style="color:#137333; font-weight:bold; font-size:16px;">🟢 【${m.name}】</div>
-                    <div style="color:#202124; font-size:13px; margin-top:4px;">✅ 您已完成簽到</div>
-                  </div>`;
-              } else {
-                // 未簽到：橘色卡片
-                html += `
-                  <div style="background:#fef7e0; border:1px solid #b06000; padding:12px 15px; border-radius:8px; margin-bottom:10px; text-align:left;">
-                    <div style="color:#b06000; font-weight:bold; font-size:16px;">📍 【${m.name}】開放簽到中</div>
-                    <div style="color:#5f6368; font-size:13px; margin-top:4px;">👉 請點擊下方按鈕，掃描現場條碼或輸入驗證碼完成簽到。</div>
-                  </div>`;
-              }
-            });
-
-            meetingBox.innerHTML = html;
-          }
+        applyUserDataToUI(res, false);
+      })
+      .catch(err => {
+        console.error("背景同步失敗：", err);
+        const tipEl = document.getElementById('syncStatusTip');
+        if (tipEl) {
+          tipEl.style.display = 'block';
+          tipEl.style.color = '#856404';
+          tipEl.style.background = '#fff3cd';
+          tipEl.style.border = '1px solid #ffeeba';
+          tipEl.innerHTML = '⚠️ 背景同步暫時逾時，請檢查網路';
         }
       });
   }
@@ -241,12 +379,19 @@
     callGasApi("bindUser", { myLineUserId: myLineUserId, name: name, idCode: idCode })
       .then(res => {
         alert(res.message);
-        if (res.success) location.reload();
+        if (res.success) {
+          clearLocalUserCache(); // 清除舊綁定快取
+          location.reload();
+        }
       });
   }
 
   // 1. 主要簽到：呼叫 LINE LIFF 相機掃描
   function triggerQrScanner() {
+    if (!myLineUserId) {
+      return alert("系統連線驗證中，請稍候 1 秒再試！");
+    }
+
     if (!liff.scanCodeV2) {
       return alert("您的 LINE 版本不支援 scanCodeV2，請使用下方【輸入驗證碼簽到】功能！");
     }
@@ -271,6 +416,10 @@
 
   // 3. 送出手動輸入的驗證碼
   function submitManualCode() {
+    if (!myLineUserId) {
+      return alert("系統連線驗證中，請稍候 1 秒再試！");
+    }
+
     const inputEl = document.getElementById('manualPasscode');
     const code = inputEl.value.trim();
     if (!code) return alert("請先輸入會議驗證碼！");
@@ -286,7 +435,7 @@
         if (res.success) {
           document.getElementById('manualPasscode').value = ''; // 清空輸入框
           document.getElementById('manualInputBox').style.display = 'none'; // 隱藏輸入框
-          initSystemData(); // 簽到成功後更新介面狀態
+          initSystemData(); // 簽到成功後更新介面狀態並更新快取
         }
       });
   }
