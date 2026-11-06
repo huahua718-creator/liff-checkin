@@ -370,6 +370,19 @@
       });
   }
 
+  // 手動點擊 🔄 即時重新整理
+  function manualRefresh() {
+    const tipEl = document.getElementById('syncStatusTip');
+    if (tipEl) {
+      tipEl.style.display = 'block';
+      tipEl.style.color = '#0c5460';
+      tipEl.style.background = '#d1ecf1';
+      tipEl.style.border = '1px solid #bee5eb';
+      tipEl.innerHTML = '🔄 正在同步最新會議簽到狀態...';
+    }
+    initSystemData();
+  }
+
   function submitBinding() {
     const name = document.getElementById('bindName').value;
     const idCode = document.getElementById('bindIdCode').value;

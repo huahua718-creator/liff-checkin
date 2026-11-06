@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; color: #333; }
+      label { font-weight: bold; display: block; margin-bottom: 8px; }
+      select { width: 100%; padding: 10px; margin-bottom: 20px; border-radius: 6px; border: 1px solid #ccc; font-size: 15px; }
+      .btn-submit { width: 100%; background: #007bff; color: white; border: none; padding: 12px; border-radius: 6px; font-weight: bold; font-size: 15px; cursor: pointer; }
+      .btn-submit:disabled { background: #ccc; cursor: not-allowed; }
+      .no-data { color: #dc3545; font-weight: bold; margin-top: 15px; }
+    </style>
+  </head>
+  <body>
+
+    <label for="reportMeetingSelect">📊 選擇要產生報表的會議：</label>
+
+    <? if (meetings && meetings.length > 0) { ?>
+      <select id="reportMeetingSelect">
+        <? for (var i = 0; i < meetings.length; i++) { ?>
+          <option value="<?= meetings[i] ?>"><?= meetings[i] ?></option>
+        <? } ?>
+      </select>
+
+      <button class="btn-submit" id="genBtn" onclick="submitGenerateReport()">產生出席統計頁籤</button>
+    <? } else { ?>
+      <div class="no-data">⚠ 查無任何會議資料！</div>
+    <? } ?>
+
+    <script>
+      function submitGenerateReport() {
+        const select = document.getElementById('reportMeetingSelect');
+        if (!select) return;
+        const meetingName = select.value;
+
+        const btn = document.getElementById('genBtn');
+        btn.disabled = true;
+        btn.innerText = '報表計算中...';
+
+        google.script.run
+          .withSuccessHandler(res => {
+            alert(res.message);
+            if (res.success) {
+              google.script.host.close();
+            } else {
+              btn.disabled = false;
+              btn.innerText = '產生出席統計頁籤';
+            }
+          })
+          .withFailureHandler(err => {
+            alert('發生錯誤：' + err.message);
+            btn.disabled = false;
+            btn.innerText = '產生出席統計頁籤';
+          })
+          .generateAttendanceReport(meetingName);
+      }
+    </script>
+  </body>
+</html>

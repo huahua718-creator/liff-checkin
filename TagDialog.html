@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 15px; margin: 0; color: #333; }
+      label { font-weight: bold; margin-bottom: 6px; display: block; font-size: 14px; }
+      input[type="text"] { width: 100%; padding: 10px; box-sizing: border-box; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+      .list-container { border: 1px solid #ddd; height: 320px; overflow-y: auto; padding: 8px 12px; border-radius: 6px; background: #fafafa; margin-bottom: 15px; }
+      .teacher-item { padding: 8px 0; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; font-size: 14px; }
+      .teacher-item label { font-weight: normal; margin: 0; cursor: pointer; flex-grow: 1; display: flex; align-items: center; gap: 8px; }
+      .tag-info { font-size: 12px; color: #888; max-width: 150px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+      .btn-select-all { background: #e2e8f0; border: none; padding: 6px 12px; font-size: 12px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+      .btn-submit { width: 100%; background: #1DB446; color: white; border: none; padding: 12px; border-radius: 6px; font-weight: bold; font-size: 15px; cursor: pointer; }
+      .btn-submit:disabled { background: #ccc; cursor: not-allowed; }
+    </style>
+  </head>
+  <body>
+    <div>
+      <label for="tagName">📌 標籤主題名稱：</label>
+      <input type="text" id="tagName" placeholder="例：國一導師、英文科備課組">
+
+      <div class="toolbar">
+        <label style="margin:0;">👥 選擇要套用標籤的教師：</label>
+        <button type="button" class="btn-select-all" onclick="toggleSelectAll()">全選 / 全不選</button>
+      </div>
+
+      <input type="text" id="searchBox" placeholder="🔍 快速搜尋姓名..." onkeyup="filterTeachers()">
+
+      <div class="list-container" id="teacherList">
+        <div style="text-align:center; padding-top:30px; color:#888;">⏳ 載入教師名單中...</div>
+      </div>
+
+      <button class="btn-submit" id="submitBtn" onclick="submitTags()">確認送出標籤</button>
+    </div>
+
+    <script>
+      let isAllSelected = false;
+
+      // 開啟視窗時載入教師名單
+      window.onload = function() {
+        google.script.run
+          .withSuccessHandler(renderTeacherList)
+          .withFailureHandler(err => {
+            document.getElementById('teacherList').innerHTML = '<div style="color:red;">載入失敗：' + err.message + '</div>';
+          })
+          .getTeacherListForTagging();
+      };
+
+      function renderTeacherList(teachers) {
+        const container = document.getElementById('teacherList');
+        if (!teachers || teachers.length === 0) {
+          container.innerHTML = '<div style="text-align:center; padding-top:20px;">查無教師資料</div>';
+          return;
+        }
+
+        let html = '';
+        teachers.forEach(t => {
+          const tagText = t.currentTag ? `(${t.currentTag})` : '(無標籤)';
+          html += `
+            <div class="teacher-item" data-name="${t.name}">
+              <label>
+                <input type="checkbox" class="teacher-checkbox" value="${t.rowIndex}">
+                <span><b>${t.name}</b></span>
+              </label>
+              <span class="tag-info" title="${t.currentTag}">${tagText}</span>
+            </div>
+          `;
+        });
+        container.innerHTML = html;
+      }
+
+      function filterTeachers() {
+        const query = document.getElementById('searchBox').value.toLowerCase();
+        const items = document.querySelectorAll('.teacher-item');
+        items.forEach(item => {
+          const name = item.getAttribute('data-name');
+          if (name.includes(query)) {
+            item.style.display = 'flex';
+          } else {
+            item.style.display = 'none';
+          }
+        });
+      }
+
+      function toggleSelectAll() {
+        isAllSelected = !isAllSelected;
+        const checkboxes = document.querySelectorAll('.teacher-checkbox');
+        checkboxes.forEach(cb => {
+          if (cb.closest('.teacher-item').style.display !== 'none') {
+            cb.checked = isAllSelected;
+          }
+        });
+      }
+
+      function submitTags() {
+        const tagName = document.getElementById('tagName').value.trim();
+        if (!tagName) {
+          alert('請輸入標籤主題名稱！');
+          return;
+        }
+
+        const checkboxes = document.querySelectorAll('.teacher-checkbox:checked');
+        const selectedIndexes = Array.from(checkboxes).map(cb => parseInt(cb.value, 10));
+
+        if (selectedIndexes.length === 0) {
+          alert('請至少勾選一位教師！');
+          return;
+        }
+
+        const btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        btn.innerText = '處理寫入中...';
+
+        google.script.run
+          .withSuccessHandler(res => {
+            alert(res.message);
+            if (res.success) {
+              google.script.host.close(); // 自動關閉彈出視窗
+            } else {
+              btn.disabled = false;
+              btn.innerText = '確認送出標籤';
+            }
+          })
+          .withFailureHandler(err => {
+            alert('發生錯誤：' + err.message);
+            btn.disabled = false;
+            btn.innerText = '確認送出標籤';
+          })
+          .addTagsToTeachers(selectedIndexes, tagName);
+      }
+    </script>
+  </body>
+</html>
